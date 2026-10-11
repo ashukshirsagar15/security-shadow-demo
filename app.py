@@ -177,6 +177,17 @@ DASHBOARD_HTML = """
                 </div>
                 <span class="badge low">SIMULATED DEMO DATA</span>
             </div>
+            <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:16px 20px;">
+                   <label for="riskFilter" style="font-weight:600;">Filter by risk:</label>
+                   <select id="riskFilter" style="padding:10px 14px; border-radius:8px; background:#111c30; color:#ffffff; border:1px solid #263650;">
+                     <option value="ALL">All Levels</option>
+                     <option value="LOW">Low Risk</option>
+                     <option value="MEDIUM">Medium Risk</option>
+                     <option value="HIGH">High Risk</option>
+                     <option value="CRITICAL">Critical Risk</option>
+                   </select>
+                   <span id="filterCount" style="color:#8eafd9;">Showing all connections</span>
+            </div>
 
             <div class="table-wrap">
                 <table>
@@ -210,6 +221,24 @@ DASHBOARD_HTML = """
             </div>
             <div id="alerts" class="empty">No live alert data received yet.</div>
         </section>
+        
+            </div>
+        </section>
+
+        <!-- Connection Details Panel -->
+        <div id="connectionDetails" class="panel"
+             style="display:none; margin-top:16px;">
+            <div class="panel-header">
+                <h2>Connection Details</h2>
+                <button id="closeDetails" type="button">Close</button>
+            </div>
+           <div id="detailsContent" style="padding:16px 20px; white-space:pre-line;"></div>
+        </div>
+
+        <section class="panel">
+            <div class="panel-header">
+                <div>
+                    <h2>Recent Alerts</h2>
     </main>
 
     <footer>
@@ -236,6 +265,7 @@ DASHBOARD_HTML = """
 
             const data = await response.json();
             const connections = data.connections || [];
+            const selectedRisk = document.getElementById("riskFilter")?.value || "ALL";
 
             const processes = new Set(
                 connections.map(c => `${c.process}:${c.pid}`)
@@ -249,24 +279,57 @@ DASHBOARD_HTML = """
             document.getElementById("processes").textContent = processes.size;
             document.getElementById("high").textContent = highRisk.length;
 
-            document.getElementById("connections").innerHTML =
-                connections.length
-                    ? connections.map(c => {
-                        const level = String(c.risk_level || "LOW").toLowerCase();
-                        return `<tr>
-                            <td>${safeText(c.process)}</td>
-                            <td>${safeText(c.pid)}</td>
-                            <td>${safeText(c.remote_ip)}</td>
-                            <td>${safeText(c.remote_port)}</td>
-                            <td>${safeText(c.risk_score)}/100</td>
-                            <td><span class="badge ${safeText(level)}">
-                                ${safeText(c.risk_level)}
-                            </span></td>
-                        </tr>`;
-                    }).join("")
-                    : `<tr><td colspan="6" class="empty">
-                        No established connections detected.
-                       </td></tr>`;
+           
+           const filteredConnections = selectedRisk === "ALL"
+            ? connections
+            : connections.filter(c => c.risk_level === selectedRisk);
+
+           document.getElementById("filterCount").textContent =
+              `Showing ${filteredConnections.length} of ${connections.length} connections`;
+
+           document.getElementById("connections").innerHTML =
+              filteredConnections.length
+                 ? filteredConnections.map(c => {
+                      const level = String(c.risk_level || "LOW").toLowerCase();
+                     return `<tr class="connection-row"
+                     style="cursor:pointer;"
+                     data-process="${safeText(c.process)}"
+                     data-pid="${safeText(c.pid)}">
+                      <td>${safeText(c.process)}</td>
+                      <td>${safeText(c.pid)}</td>
+                      <td>${safeText(c.remote_ip)}</td>
+                      <td>${safeText(c.remote_port)}</td>
+                      <td>${safeText(c.risk_score)}/100</td>
+                      <td><span class="badge ${safeText(level)}">
+                          ${safeText(c.risk_level)}
+                      </span></td>
+                    </tr>`;
+                 }).join("")
+                 : `<tr><td colspan="6" class="empty">
+                   No connections match this risk level.
+                  </td></tr>`;
+                  
+           document.querySelectorAll(".connection-row").forEach(row => {
+             row.addEventListener("click", () => {
+                  const processName = row.dataset.process;
+                  const pid = row.dataset.pid;
+                  const connection = connections.find(c =>
+                      c.process === processName && String(c.pid) === pid
+                  );
+
+                  if (!connection) return;
+
+                  document.getElementById("detailsContent").textContent =
+                     `Process: ${connection.process}\n` +
+                     `PID: ${connection.pid}\n` +
+                     `Remote address: ${connection.remote_ip}:${connection.remote_port}\n` +
+                     `Risk score: ${connection.risk_score}/100\n` +
+                     `Risk level: ${connection.risk_level}\n` +
+                     `Reasons: ${(connection.reasons || []).join("; ")}`;
+
+                  document.getElementById("connectionDetails").style.display = "block";
+             });
+           });
 
             const alerts = document.getElementById("alerts");
 
@@ -303,7 +366,9 @@ DASHBOARD_HTML = """
                 "● DATA CONNECTION ERROR";
         }
     }
-
+document.getElementById("closeDetails")?.addEventListener("click", () => {
+    document.getElementById("connectionDetails").style.display = "none";
+});
     updateDashboard();
     setInterval(updateDashboard, 5000);
 </script>
